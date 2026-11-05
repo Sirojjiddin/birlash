@@ -1940,7 +1940,7 @@ const CENTER = (() => {
     const bi = $('#brandImg'), ci = $('#cbLogo');
     [bi, ci].forEach(im => { if (logo) { im.src = logo; im.hidden = false; } else { im.hidden = true; im.removeAttribute('src'); } });
     $('#brandMark').hidden = !!logo;
-    $('#brandName').textContent = cur ? cur.name : 'SyncBY';
+    $('#brandName').textContent = cur ? cur.name : 'birlash';
     $('#brandSub').hidden = !cur;
     const bd = $('#centerBadge'); bd.hidden = !cur;
     if (cur) { $('#cbLabel').textContent = cur.name; if (cur.link) bd.href = cur.link; else bd.removeAttribute('href'); }
@@ -1950,7 +1950,7 @@ const CENTER = (() => {
     box.hidden = !(enabled || cur);
     document.title = S.roomName ? S.roomName + ' · ' + title() : title();
   }
-  const title = () => (cur ? cur.name : 'SyncBy');
+  const title = () => (cur ? cur.name : 'birlash');
   [$('#brandImg'), $('#cbLogo')].forEach(im => { im.onerror = () => { im.hidden = true; if (im.id === 'brandImg') $('#brandMark').hidden = false; }; });
 
   function setLocked(sec) {                                 // blok: input o'chadi, qolgan vaqt sanaladi
