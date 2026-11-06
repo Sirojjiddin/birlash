@@ -606,12 +606,11 @@ function showViewer(it) {
     $('#docMeta').textContent = fmtSize(it.size);
   }
   $('#openLink').href = src;
-  $('#openLink').hidden = it.kind === 'doc' || it.kind === 'archive' || !canDl();
-  const dl = $('#dlLink');
-  dl.href = srcOf(it, true); dl.setAttribute('download', it.name);
-  dl.hidden = !canDl();
-  $('#fileBar').hidden = $('#openLink').hidden && dl.hidden;
-}
+const dlOn = !!S.cfg.allowDownload;          // Transmitter'da ham sozlamaga qarab ko'rinadi
+$('#openLink').hidden = it.kind === 'doc' || it.kind === 'archive' || !dlOn;
+const dl = $('#dlLink');
+dl.href = srcOf(it, true); dl.setAttribute('download', it.name);
+dl.hidden = !dlOn;
 
 // ------------------------------------------------------------ media abstraksiya (fayl pleyer yoki YouTube)
 const Y = { p: null, api: null, ok: false, state: -1, id: null, active: false, titled: null };
