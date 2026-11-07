@@ -2013,8 +2013,11 @@ async function studentEnter() {
     if (rooms.length === 1) {
       $('#codeIn').value = rooms[0].code; $('#joinErr').hidden = true;
       showView('join');
-      if ($('#nameIn').value.trim()) await doJoin();
-      else { $('#nameIn').classList.add('need'); $('#nameIn').focus(); toast('✏️ Ismingizni yozing va «Qo\'shilish» ni bosing', 4500); }
+      // Student kodi bilan kirganda ism HAR DOIM avval so'raladi (eski saqlangan ism bilan jim kirib ketmaydi).
+      // Ism yozilib Enter / «Qo'shilish» bosilgach, doJoin() xonaga avtomatik kiritadi.
+      $('#nameIn').value = '';
+      $('#nameIn').classList.add('need'); $('#nameIn').focus();
+      toast('✏️ Avval ismingizni yozing — keyin xonaga avtomatik kirasiz', 4500);
       return;
     }
     $('#codeIn').value = '';
