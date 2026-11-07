@@ -314,7 +314,7 @@ function defaultCfg() {
     pcApprove: false,       // true: noutbuk/kompyuterdan kirmoqchi bo'lganlar avtomatik "qabul qilish rejimi"ga tushadi (Transmitter ruxsatini kutadi)
     phoneOnly: false,       // true: faqat telefondan kirish mumkin (kompyuter/planshet/TV rad etiladi)
     loop: 'off',            // 'off' | 'one' | 'all'
-    allowReact: true,       // receiverlar emoji reaksiya yubora oladimi (dastlab yoqiq)
+    allowReact: false,       // receiverlar emoji reaksiya yubora oladimi (dastlab yoqiq)
     waitAll: true,          // Play bosilganda hamma qurilma tayyor bo'lguncha (maks. 6 s) kutish
     allowChat: true,        // receiverlar chatga yoza oladimi (hamma ko'radi)
     allowChatQuiz: true,    // viktorina paytida ham receiverlar chatga yoza oladimi
