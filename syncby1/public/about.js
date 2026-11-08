@@ -8,7 +8,7 @@
 
   var HTML = {
     loyiha:
-      '<h3>Birlash nima?</h3>' +
+      '<h3><a href="https://drive.google.com/file/d/1ODkV_q3bigOuKpb8gpAMo1BeaIGZkWG5/view?usp=sharing">Birlash nima?</a></h3>' +
       '<p>Birlash — bir xonada (yoki internet orqali) bir nechta telefon va kompyuterda audio, video va fayllarni <b>bir vaqtda</b> chalish va ko\'rsatish tizimi. Ustoz (Transmitter) uzatadi, o\'quvchilar (Receiver) kod yoki QR orqali kirib, o\'z qurilmasida bir xil ko\'radi va eshitadi.</p>' +
       '<div class="ab-grid">' +
       '<div class="ab-card"><b>⚡ Sinxron chalish</b><small>Har bir qurilma server bilan soatini o\'lchaydi (ms aniqlikda), Play hammada bir paytda boshlanadi.</small></div>' +
