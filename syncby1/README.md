@@ -1,4 +1,4 @@
-# SyncCast
+# Birlash
 
 Bir nechta qurilmada **bir vaqtda** (sinxron) musiqa yoki film chalish. Kahoot kabi: Transmitter xona yaratadi, Receiverlar 6 xonali kod (yoki QR) bilan kiradi.
 
@@ -24,21 +24,7 @@ Markaz brendi: tepada markaz nomi va logotipi, asosiy rang, "Hamkorlikda" o'rnig
 
 Kodlar `.env` faylida saqlanadi (namuna: `.env.example`):
 
-```
-# ustoz/admin kodi (eski nomi CENTER_1_CODE ham ishlaydi)
-CENTER_1_TEACHER_CODE=USTOZ-XXXX-XXXX
-# student kodi (ixtiyoriy; ustoz kodidan farq qilishi shart)
-CENTER_1_STUDENT_CODE=TALABA-XXXX-XXXX
-CENTER_1_NAME=Marvarid Academy
-CENTER_1_LOGO=https://.../logo.png      # yoki /logos/marvarid.png (public/logos/ ichiga qo'ying)
-CENTER_1_LINK=https://t.me/...
-CENTER_1_COLOR=#e0457b
-CENTER_1_COLOR2=#8a5bff                 # ixtiyoriy
-CENTER_1_LAT=41.311081                  # markazning standart joylashuvi (kenglik) — GPS shart emas
-CENTER_1_LNG=69.240562                  # uzunlik
-CENTER_1_RADIUS=150                     # ixtiyoriy: davomat radiusi (metr, 20–50000)
-```
-
+``
 **Diqqat:** `.env` da izohni alohida qatorga yozing — qiymat oxiridagi `# izoh` qiymatning o'ziga kirib ketadi (pastdagi namunada izohlar tushuntirish uchun yonida turibdi, `.env.example` faylida esa alohida qatorda). Yangi markaz: blokni nusxalab raqamini oshiring (`CENTER_2_...`), serverni qayta ishga tushiring. Student kodi o'zgartirilsa, eski student qurilmalari avtomatik chiqib ketadi (ustoz kodi o'zgarsa — hamma markaz tokenlari yaroqsiz bo'ladi).
 
 - Kod harf, raqam va belgilardan iborat bo'lishi mumkin; katta-kichik harf va bo'sh joy farq qilmaydi. Ustoz va student kodlari (va barcha markazlarniki) bir-biridan farq qilishi shart — takrorlanganda server ogohlantiradi va keyingisini o'tkazib yuboradi.
