@@ -5300,11 +5300,14 @@ window.APPBRIDGE = {
     return {
       kind: item ? item.kind : 'none',
       title: item ? (item.name || item.title || '') : '',
+      size: item ? item.size : 0,
+      ytId: item && item.kind === 'youtube' ? item.ytId : '',
       playing: !!(S.st && S.st.playing),
       video: item && item.kind === 'video' ? player : null,
       image: item && item.kind === 'image' ? $('#pic') : null,
     };
   },
+  stage: () => $('#stage'),      // 3D doska "proyektor" rejimi uchun haqiqiy ko'rsatkich elementi
 };
 window.SC = { S, send, toast, isHost, $, makeZip, xlsxToRows, unzipDocx, sNow };   // attendance.js uchun ko'prik
 })();

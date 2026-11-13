@@ -17,6 +17,8 @@ const hash = s => { let h = 2166136261; s = String(s); for (let i = 0; i < s.len
 const pick = (a, h, k = 0) => a[(h >>> k) % a.length];
 const SHIRT = [0xe4572e, 0x29b6f6, 0x66bb6a, 0xffca28, 0xab47bc, 0xef5350, 0x26a69a, 0xff7043, 0x5c6bc0, 0xec407a, 0x8d6e63, 0x9ccc65];
 const PANTS = [0x2b3a55, 0x3d3d3d, 0x4a4036, 0x1f2f4a, 0x5a5a66];
+const TIE = [0xb3261e, 0x1565c0, 0x2e7d32, 0xd9a400, 0x7b1fa2, 0xc2185b];
+const UNI_PANTS = [0x23262e, 0x2a2d38, 0x1b1f2a, 0x30333d];
 const SKIN = [0xf2c9a0, 0xe0ac80, 0xc68642, 0x8d5524, 0xffdbb0, 0xd9a066];
 const HAIR = [0x1b1b1b, 0x3b2a1a, 0x6b4423, 0xc9a227, 0x8a8a8a, 0x2c1e14];
 const BOOK = [0xc0392b, 0x2980b9, 0x27ae60, 0xf1c40f, 0x8e44ad, 0xe67e22, 0x16a085];
@@ -26,20 +28,48 @@ const DENY = { off: '3D xona o\'chiq', locked: '🔒 O\'rinlar qulflangan', take
 // ------------------------------------------------------------------ holat
 const C = { cfg: null, st: null, open: false, view: 'pov', viewRole: null, sel: null, mv: false, peer: null, whOpen: false,
   quiz: null, award: null, quizAutoOpened: false, quizCamera: null,
-  threads: new Map(), unread: new Map(), names: new Map(), yaw: 0, pitch: 0, oy: 0, op: 0.62, rad: 14, boardRad: 16, boardZoomed: false, zoomed: false, hover: null, idle: 0 };
+  threads: new Map(), unread: new Map(), names: new Map(), yaw: 0, pitch: 0, oy: 0, op: 0.62, rad: 14, boardRad: 16, boardZoomed: false, zoomed: false, hover: null, idle: 0, proj: false, projBad: '', projZoom: 1 };
 let L = null;                 // joylashuv (cols, cap, W, D ...)
 let T = null, R = null;       // THREE, sahna
 let loadP = null, dom = null, fallback = null;
 const boardScreen = document.createElement('video');
 boardScreen.muted = true; boardScreen.playsInline = true; boardScreen.autoplay = true;
 // Auto zaif qurilmalarda FPSni, Tez rejimi esa render o'lchamini pasaytiradi
-const QUALITY = { mode: 'auto', fps: 60, scale: 1 };
+const QUALITY = { mode: 'auto', fps: 60, scale: 1, gov: 1, low: false };   // gov — avtomatik piksel zichligi koeffitsienti (0.55..1)
+const MAX_PX = 3840 * 2160 * 1.1;                                         // 4K gacha to'liq tiniqlik; undan oshmaydi (GPU/CPU isimasligi uchun)
+let ANISO = 4;
 function tuneQuality() {
   const low = LOW || (navigator.deviceMemory && navigator.deviceMemory <= 4);
-  QUALITY.fps = QUALITY.mode === 'low' ? 60 : QUALITY.mode === 'high' ? 60 : low ? 30 : 60;
-  QUALITY.scale = QUALITY.mode === 'low' ? 0.65 : QUALITY.mode === 'high' ? 1.05 : low ? 0.75 : 0.9;
-  if (R) { R.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, LOW ? 1.2 : 1.5) * QUALITY.scale); fit(); }
+  QUALITY.low = !!low;
+  QUALITY.fps = QUALITY.mode === 'low' ? 60 : low ? 30 : 60;
+  QUALITY.scale = QUALITY.mode === 'low' ? 0.65 : low ? 0.8 : 1;
+  QUALITY.gov = 1;
+  if (R) { R.boardKey = ''; if (R.roomG) R.roomG.userData.k = ''; applyDpr(); if (L && C.st) applyScene(); }
 }
+// Piksel zichligi: doska — maksimal tiniqlik (sahna arzon), umumiy ko'rinishlar — sifat/FPS muvozanati
+function applyDpr() {
+  if (!R || !dom) return;
+  const w = dom.clientWidth || innerWidth, h = dom.clientHeight || innerHeight, dev = window.devicePixelRatio || 1;
+  let pr;
+  if (C.view === 'board') pr = QUALITY.mode === 'low' ? Math.min(dev, 1.25) : dev;
+  else pr = Math.min(dev, QUALITY.low ? 1.25 : QUALITY.mode === 'high' ? 2.5 : 2) * QUALITY.scale * (QUALITY.mode === 'auto' ? QUALITY.gov : 1);
+  pr = Math.max(0.5, Math.min(pr, Math.sqrt(MAX_PX / Math.max(1, w * h))));
+  if (Math.abs(pr - (R.pr || 0)) > 0.01) { R.pr = pr; R.renderer.setPixelRatio(pr); }
+  R.renderer.setSize(w, h, false); R.camera.aspect = w / h; R.camera.updateProjectionMatrix();
+  R.dirty = true;
+}
+// "Barqaror tezlik": kadrlar sekinlashsa piksel zichligi o'zi pasayadi, yengillashsa qaytadi
+function governor(dt, t) {
+  if (QUALITY.mode !== 'auto' || C.view === 'board') return;
+  R.gAcc += dt; R.gN++;
+  if (R.gN < 40) return;
+  const avg = R.gAcc / R.gN, budget = 1000 / QUALITY.fps; R.gAcc = 0; R.gN = 0;
+  if (avg > budget * 1.4 && QUALITY.gov > 0.56 && t - R.gAt > 1500) { QUALITY.gov = Math.max(0.55, QUALITY.gov * 0.85); R.gAt = t; applyDpr(); }
+  else if (avg < budget * 1.12 && QUALITY.gov < 1 && t - R.gAt > 6000) { QUALITY.gov = Math.min(1, QUALITY.gov * 1.1); R.gAt = t; applyDpr(); }
+}
+// Foydalanuvchi harakati: tez chizish rejimini yoqadi (aks holda sahna tinch turganda kam chiziladi)
+function poke() { if (R) { R.dirty = true; R.active = performance.now() + 350; } }
+function touch() { C.idle = performance.now(); poke(); }
 
 // ------------------------------------------------------------------ joylashuv
 const PAIR_W = 2.3, GAP = 1.0, ROW0 = 3.6, ROWD = 1.75, H = 3.4, TP = { x: 1.9, z: 1.3 }, PF = 0.14; // PF — ustoz podiumi balandligi
@@ -78,7 +108,7 @@ function loadThree() {
       else if (window.THREE) res();
       else { loadP = null; rej(new Error('three.js topilmadi')); }
     };
-    const timer = setTimeout(() => finish(new Error('three.js yuklanishi vaqtida tugamadi')), 4000);
+    const timer = setTimeout(() => finish(new Error('three.js yuklanishi vaqtida tugamadi')), 15000);
     s.src = '/lib/three.min.js';
     s.fetchPriority = 'high';
     s.onload = () => finish();
@@ -110,7 +140,7 @@ function buildDom() {
       <div class="c3-wh-list"></div>
       <div class="c3-wh-f"><input maxlength="300" placeholder="Shaxsiy xabar…" autocomplete="off" enterkeyhint="send"><button type="button" class="c3-send">➤</button></div>
     </div>
-    <div class="c3-load"><div class="c3-spin"></div><span>3D xona yuklanmoqda…</span></div>
+    <div class="c3-load" hidden><div class="c3-spin"></div><span>3D xona yuklanmoqda…</span></div>
     <div class="c3-hint"></div>
     <div class="c3-toast"></div>`;
   document.body.appendChild(dom);
@@ -129,6 +159,9 @@ function buildDom() {
     act(b.dataset.act, b.dataset.id, b);
   });
   document.addEventListener('keydown', onKey);
+  if (window.ResizeObserver) new ResizeObserver(() => { if (!C.open) return; fit(); syncProj(); }).observe(dom);
+  dom.addEventListener('wheel', e => { if (C.proj) { e.preventDefault(); boardZoom(Math.exp(e.deltaY * 0.001)); } }, { passive: false });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && C.open) { poke(); startLoop(); if (fallback) startFallback(); } });
   renderTabs();
 }
 
@@ -137,15 +170,15 @@ function onKey(e) {
   if (!C.open) return;
   if (e.key === 'Escape') return closeOverlay();
   const t = e.target && e.target.tagName; if (t === 'INPUT' || t === 'TEXTAREA') return;
-  const k = e.key; C.idle = performance.now();
+  const k = e.key; touch();
   if (C.view === 'pov') {
     if (k === 'ArrowLeft') C.yaw = clamp(C.yaw - 0.12, -1.5, 1.5);
     else if (k === 'ArrowRight') C.yaw = clamp(C.yaw + 0.12, -1.5, 1.5);
     else if (k === 'ArrowUp') C.pitch = clamp(C.pitch + 0.08, -0.55, 0.6);
     else if (k === 'ArrowDown') C.pitch = clamp(C.pitch - 0.08, -0.55, 0.6);
   } else if (C.view === 'board') {
-    if (k === '+' || k === '=') { C.boardRad = clamp(C.boardRad * 0.9, 5, 36); C.boardZoomed = true; }
-    else if (k === '-') { C.boardRad = clamp(C.boardRad * 1.1, 5, 36); C.boardZoomed = true; }
+    if (k === '+' || k === '=') boardZoom(0.9);
+    else if (k === '-') boardZoom(1.1);
   } else if (C.view === 'orbit') {
     if (k === 'ArrowLeft') C.oy -= 0.12; else if (k === 'ArrowRight') C.oy += 0.12;
     else if (k === 'ArrowUp') C.op = clamp(C.op + 0.06, 0.12, 1.45); else if (k === 'ArrowDown') C.op = clamp(C.op - 0.06, 0.12, 1.45);
@@ -167,9 +200,9 @@ function act(a, id) {
   const send = o => BR().send(o);
   switch (a) {
     case 'view': setView(id); break;
-    case 'board-zoom-in': C.boardRad = clamp(C.boardRad * 0.82, 5, 36); C.boardZoomed = true; renderTabs(); break;
-    case 'board-zoom-out': C.boardRad = clamp(C.boardRad / 0.82, 5, 36); C.boardZoomed = true; renderTabs(); break;
-    case 'board-zoom-reset': C.boardRad = fitBoardDistance(); C.boardZoomed = false; renderTabs(); break;
+    case 'board-zoom-in': boardZoom(0.82); break;
+    case 'board-zoom-out': boardZoom(1 / 0.82); break;
+    case 'board-zoom-reset': C.boardRad = fitBoardDistance(); C.boardZoomed = false; C.projZoom = 1; syncProj(); poke(); break;
     case 'sel': select(id); break;
     case 'desel': select(null); break;
     case 'wh': openWh(id); break;
@@ -207,18 +240,61 @@ function onSeat(s) {
 
 function setView(v) {
   if (v === 'board' && C.view !== 'board' && !C.boardZoomed) C.boardRad = fitBoardDistance();
-  C.view = v; C.idle = performance.now();
+  C.view = v; touch();
   renderTabs();
   const plan = v === 'plan', board = v === 'board';
   $('.c3-plan', dom).hidden = !plan;
   $('.c3-cv', dom).style.visibility = plan ? 'hidden' : 'visible';
   dom.classList.toggle('c3-board-view', board);
   const fb = $('.c3-fb', dom); fb.hidden = plan || !fallback;
-  if (plan) renderPlan();
+  if (plan) { $('.c3-load', dom).hidden = true; renderPlan(); }      // 2D reja 3D kutubxonasiga muhtoj emas — yuklanish belgisi qolib ketmasin
   else if (board && fallback) drawFallback();
   else if (fallback) startFallback();
   else ensureGL();
+  if (R) applyDpr();
+  syncProj();
   renderHint();
+}
+
+// ------------------------------------------------------------------ doska "proyektor" rejimi
+// Ulashilgan kontent (video, rasm, PDF, matn, Word/Excel/PowerPoint, YouTube, ekran) doskaga yaqinlashtirilganda
+// haqiqiy elementning o'zi (piksel-aniq, 4K) #c3 ustidagi "teshik"dan ko'rsatiladi: tiniq va protsessorga yuk tushmaydi.
+const VISUAL = new Set(['video', 'cast', 'image', 'pdf', 'text', 'office', 'youtube', 'doc', 'archive']);
+const stageEl = () => (BR() && BR().stage && BR().stage()) || document.getElementById('stage');
+function projRect() {
+  const W = dom.clientWidth, Hh = dom.clientHeight, top = Math.round($('.c3-top', dom).getBoundingClientRect().bottom + 8), bot = 34, side = 10;
+  const aw = W - side * 2, ah = Hh - top - bot, z = clamp(C.projZoom, 0.4, 1);
+  const w = Math.round(aw * z), h = Math.round(ah * z);
+  return { x: Math.round(side + (aw - w) / 2), y: Math.round(top + (ah - h) / 2), w, h };
+}
+function releaseProj() {
+  const st = stageEl();
+  if (st) { st.classList.remove('c3-over'); st.style.removeProperty('--c3x'); st.style.removeProperty('--c3y'); st.style.removeProperty('--c3w'); st.style.removeProperty('--c3h'); }
+  if (!dom) { C.proj = false; return; }
+  dom.style.clipPath = ''; dom.classList.remove('c3-proj');
+  if (C.proj) { C.proj = false; poke(); if (C.open && C.view !== 'plan') { if (R) startLoop(); if (fallback) startFallback(); } }
+}
+function syncProj() {
+  if (!dom || !C.open) return releaseProj();
+  const st = stageEl(), kind = st && st.dataset.kind;
+  const on = C.view === 'board' && st && VISUAL.has(kind) && !document.fullscreenElement && !st.classList.contains('pseudo-fs');
+  if (!on) { C.projBad = ''; return releaseProj(); }
+  if (C.projBad === kind + '|' + (BR().S().st || {}).currentId) return releaseProj();   // bu kontentda joylashtirish ishlamadi — 3D doska ko'rsatadi
+  const r = projRect();
+  st.classList.add('c3-over');
+  st.style.setProperty('--c3x', r.x + 'px'); st.style.setProperty('--c3y', r.y + 'px'); st.style.setProperty('--c3w', r.w + 'px'); st.style.setProperty('--c3h', r.h + 'px');
+  const b = st.getBoundingClientRect();
+  if (Math.abs(b.left - r.x) > 2 || Math.abs(b.top - r.y) > 2 || Math.abs(b.width - r.w) > 2 || Math.abs(b.height - r.h) > 2) {   // stage ko'rinmaydi yoki transformli ota ichida
+    C.projBad = kind + '|' + (BR().S().st || {}).currentId; return releaseProj();
+  }
+  dom.style.clipPath = `polygon(evenodd,0 0,100% 0,100% 100%,0 100%,0 0,${r.x}px ${r.y}px,${r.x}px ${r.y + r.h}px,${r.x + r.w}px ${r.y + r.h}px,${r.x + r.w}px ${r.y}px,${r.x}px ${r.y}px)`;
+  dom.classList.add('c3-proj');
+  if (!C.proj) { C.proj = true; renderHint(); }
+}
+function boardZoom(f) {
+  if (C.proj) C.projZoom = clamp(C.projZoom / f, 0.4, 1);
+  else { C.boardRad = clamp(C.boardRad * f, 2.5, 36); C.boardZoomed = true; }
+  syncProj(); poke();
 }
 
 function openOverlay() {
@@ -227,6 +303,7 @@ function openOverlay() {
   buildDom();
   C.open = true; dom.hidden = false;
   document.documentElement.classList.add('c3-lock');
+  clearInterval(C.pollT); C.pollT = setInterval(() => { if (C.open) syncProj(); }, 400);
   setView(C.view);
   renderAll();
   updateFab();
@@ -235,6 +312,7 @@ function openOverlay() {
 function closeOverlay() {
   if (!dom) return;
   C.open = false; dom.hidden = true;
+  clearInterval(C.pollT); releaseProj();
   document.documentElement.classList.remove('c3-lock');
   if (R && R.raf) { cancelAnimationFrame(R.raf); R.raf = 0; }
   if (fallback && fallback.raf) { cancelAnimationFrame(fallback.raf); fallback.raf = 0; }
@@ -273,7 +351,7 @@ function renderAll() {
 function renderHint() {
   const h = $('.c3-hint', dom); if (!h) return;
   const host = isHost(), needsSeat = !host && mySeat() == null;
-  h.textContent = C.view === 'board' ? 'Doskani yaqinlashtirish uchun +/− tugmalarini, g‘ildirakni yoki chimchilashni ishlating; boshqa ko‘rinishga qaytish uchun yuqoridagi tugmani bosing.'
+  h.textContent = C.view === 'board' ? (C.proj ? 'Ulashilgan kontent asl sifatda ko‘rsatilmoqda · kichraytirish: − tugmasi yoki g‘ildirak' : 'Doskani yaqinlashtirish uchun +/− tugmalarini, g‘ildirakni yoki chimchilashni ishlating; boshqa ko‘rinishga qaytish uchun yuqoridagi tugmani bosing.')
     : C.view === 'pov' ? (host ? 'Ustoz ko\'rinishi · doskani bosing — katta ko\'rinish · sudrab atrofga qarang (yoki ← → ↑ ↓)' : 'Doskani bosing — katta ko\'rinish · bo\'sh stulni bosing — o\'tirasiz · odamni bosing — xabar yozing')
     : C.view === 'orbit' ? 'Doskani bosing — katta ko\'rinish · sudrab aylantiring · yashil doira — bo\'sh o\'rin'
       : needsSeat ? 'O\'quvchi: bo\'sh o\'rindiqni tanlab joylashing.' : '';
@@ -548,7 +626,7 @@ function on(m) {
     if (C.sel && !personById(C.sel)) C.sel = null;
     if (C.peer && C.peer !== 'host' && !personById(C.peer) && !C.threads.has(C.peer)) C.peer = null;
     if (!L || L.cols !== m.cols || L.cap !== m.cap) { L = layout(m.cols, m.cap); if (!C.zoomed) fitOrbit(); }
-    if (!isHost() && oldSeat == null && mySeat() != null && C.view === 'plan') setView('pov');
+    if (!isHost() && oldSeat == null && mySeat() != null && C.view === 'plan') { if (C.open && dom) setView('pov'); else C.view = 'pov'; }   // overlay hali ochilmagan bo'lsa DOM yo'q — avval xato berib, holat yangilanishi to'xtab qolar edi
     if (R) applyScene();
     if (C.open) renderAll();
     updateFab();
@@ -564,6 +642,8 @@ function cfg(c) {
     return;
   }
   updateFab();
+  // three.js ni bo'sh vaqtda oldindan yuklaymiz: 3D xona bosilganda darhol ochiladi
+  if (!window.THREE && !loadP) (window.requestIdleCallback || (f => setTimeout(f, 1200)))(() => { loadThree().catch(() => {}); }, { timeout: 4000 });
   if (C.open) { renderAll(); renderTabs(); }
   if (R) applyScene();
   if (C.quiz && C.quiz.phase === 'final' && C.award && C.award.top.length && !C.quizAutoOpened && SS().joined) {
@@ -595,7 +675,7 @@ function mat(c, o) { const k = c + (o ? JSON.stringify(o) : ''); let m = mats.ge
 function add(parent, w, h, d, color, x, y, z, o) {
   const m = new T.Mesh(box(w, h, d), mat(color, o)); m.position.set(x, y, z); m.castShadow = !LOW; m.receiveShadow = !LOW; parent.add(m); return m;
 }
-function canvasTex(w, h, draw) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d'), w, h); const t = new T.CanvasTexture(cv); t.anisotropy = 4; return t; }
+function canvasTex(w, h, draw) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d'), w, h); const t = new T.CanvasTexture(cv); t.anisotropy = ANISO; return t; }
 
 function ensureGL() {
   const ld = $('.c3-load', dom);
@@ -612,17 +692,21 @@ function ensureGL() {
 
 function initGL() {
   const cv = $('.c3-cv', dom);
-  const renderer = new T.WebGLRenderer({ canvas: cv, antialias: false });
+  const renderer = new T.WebGLRenderer({ canvas: cv, antialias: !LOW && (window.devicePixelRatio || 1) < 2, alpha: false, stencil: false, powerPreference: 'default' });
   renderer.setPixelRatio(1);
-  if (!LOW && C.st && C.st.seats.length <= 80) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFShadowMap; }
+  ANISO = Math.min(16, renderer.capabilities.getMaxAnisotropy() || 4);
+  if (!LOW && C.st && C.st.seats.length <= 80) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFShadowMap; renderer.shadowMap.autoUpdate = false; }   // soya faqat sahna o'zgarganda yangilanadi
   const scene = new T.Scene();
   scene.background = canvasTex(8, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0b1124'); g.addColorStop(1, '#22304f'); x.fillStyle = g; x.fillRect(0, 0, w, h); });
   scene.fog = new T.Fog(0x1a2542, 40, 95);
   const camera = new T.PerspectiveCamera(68, 1, 0.05, 120);
   scene.add(new T.HemisphereLight(0xdfe9ff, 0x6b5a46, 0.8));
   const sun = new T.DirectionalLight(0xfff0d6, 0.75); sun.position.set(-9, 10, 6); scene.add(sun); scene.add(sun.target);
-  if (renderer.shadowMap.enabled) { sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); const sc = sun.shadow.camera; sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 40; sun.shadow.bias = -0.0006; }
-  R = { renderer, scene, camera, sun, figs: new Map(), pick: [], markers: [], ceilObjs: [], roomG: null, teacher: null, cp: new T.Vector3(0, 3, 12), ct: new T.Vector3(0, 1, 3), raf: 0, last: 0, bubbles: [], ray: new T.Raycaster(), ndc: new T.Vector2(), boardSig: '', floorTex: null, populated: false };
+  if (renderer.shadowMap.enabled) { sun.castShadow = true; sun.shadow.mapSize.set(navigator.deviceMemory && navigator.deviceMemory <= 4 ? 1024 : 2048, navigator.deviceMemory && navigator.deviceMemory <= 4 ? 1024 : 2048); const sc = sun.shadow.camera; sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 40; sun.shadow.bias = -0.0006; }
+  R = { renderer, scene, camera, sun, figs: new Map(), pick: [], markers: [], ceilObjs: [], roomG: null, teacher: null, cp: new T.Vector3(0, 3, 12), ct: new T.Vector3(0, 1, 3), raf: 0, last: 0, bubbles: [], ray: new T.Raycaster(), ndc: new T.Vector2(), boardSig: '', floorTex: null, populated: false,
+    dirty: true, active: 0, pr: 0, gAcc: 0, gN: 0, gAt: 0, shadowDirty: true, shAt: 0, mkey: '', mSrc: null, vfDirty: false, vWatch: null, mAt: 0, scrDims: '' };
+  cv.addEventListener('webglcontextlost', e => { e.preventDefault(); R.lost = true; });
+  cv.addEventListener('webglcontextrestored', () => { R.lost = false; R.mkey = ''; R.boardSig = ''; R.shadowDirty = true; if (R.roomG) R.roomG.userData.k = ''; applyScene(); poke(); });
   R.floorTex = canvasTex(256, 256, (x, w, h) => {
     x.fillStyle = '#b98a54'; x.fillRect(0, 0, w, h);
     for (let i = 0; i < 4; i++) { x.fillStyle = i % 2 ? '#c29761' : '#ae7f4a'; x.fillRect(0, i * 64, w, 62); x.fillStyle = 'rgba(60,35,15,.5)'; x.fillRect(0, i * 64 + 62, w, 2); for (let k = 0; k < 3; k++) x.fillRect((k * 83 + i * 37) % w, i * 64, 2, 62); }
@@ -639,31 +723,38 @@ function initGL() {
   R.mkHot = new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.95, depthWrite: false, side: T.DoubleSide });
   bindPointer(cv);
   window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', () => setTimeout(fit, 250));
   fit();
   if (C.st) applyScene();
 }
 
-function fit() {
-  if (!R || !dom) return;
-  const w = dom.clientWidth || innerWidth, h = dom.clientHeight || innerHeight;
-  R.renderer.setSize(w, h, false); R.camera.aspect = w / h; R.camera.updateProjectionMatrix();
-}
+function fit() { if (!R || !dom) return; applyDpr(); }
 function fitOrbit() { if (L) C.rad = clamp(Math.max(L.W, L.D) * 1.0, 9, 40); }
+// Doska o'lchamlari (ramka ichidagi yozuv maydoni) — hamma joyda shu funksiya ishlatiladi
+function boardDims() { const bw = Math.min((L ? L.W : 12) - 2.6, 6.6); return { bw, bh: 2.2, by: 1.95 }; }
 function fitBoardDistance() {
-  const width = L ? Math.min(L.W - 2.6, 7.6) : 7.6;
-  const aspect = Math.max(0.35, (dom && dom.clientWidth || innerWidth) / (dom && dom.clientHeight || innerHeight));
-  const halfFov = Math.atan(Math.tan(36 * Math.PI / 360) * aspect);
-  return clamp(width / (2 * Math.tan(halfFov)) * 1.16, 8, 36);
+  const { bw, bh } = boardDims();
+  const vw = (dom && dom.clientWidth) || innerWidth, vh = (dom && dom.clientHeight) || innerHeight;
+  const aspect = Math.max(0.3, vw / vh), tanH = Math.tan(36 * Math.PI / 360);
+  const dW = (bw * 1.1 / 2) / (tanH * aspect), dH = (bh * 1.5 / 2) / tanH;      // yuqori panel va tugmalar uchun joy qoldiriladi
+  return clamp(Math.max(dW, dH), 2.5, 36);
 }
 
 function startLoop() {
-  if (!R || R.raf || C.view === 'plan' || !C.open) return;
-  fit(); R.last = performance.now();
+  if (!R || R.raf || C.view === 'plan' || !C.open || C.proj || document.hidden) return;
+  fit(); R.last = 0; R.dirty = true;
   const tick = t => {
-    if (!C.open || C.view === 'plan') { R.raf = 0; return; }
+    if (!C.open || C.view === 'plan' || C.proj || document.hidden) { R.raf = 0; return; }
     R.raf = requestAnimationFrame(tick);
-    if (QUALITY.fps < 60 && t - R.last < 1000 / QUALITY.fps - 2) return;
-    frame(t, Math.min(0.1, (t - R.last) / 1000)); R.last = t;
+    if (R.lost) return;
+    // Tinch sahnada kam chiziladi (protsessor isimaydi); harakat/video/o'zgarish bo'lsa — to'liq tezlikda
+    const since = t - R.last, busy = R.dirty || R.active > t;
+    const gap = busy ? 1000 / QUALITY.fps - 2 : (C.view === 'board' ? 1000 : 1000 / 12);
+    if (since < gap) return;
+    const dt = R.last ? Math.min(0.1, since / 1000) : 0.016;
+    R.dirty = false; frame(t, dt);
+    if (R.active > t && R.last) governor(since, t);     // faqat uzluksiz harakat paytida o'lchanadi
+    R.last = t;
   };
   R.raf = requestAnimationFrame(tick);
 }
@@ -686,8 +777,12 @@ function shelf(g, x, z) {
 function buildRoom() {
   if (R.roomG) { R.scene.remove(R.roomG); disposeGroup(R.roomG); }
   if (R.boardMesh) { R.boardMesh.material.dispose(); R.boardMesh = null; }
+  if (R.scr) { R.scr.material.dispose(); R.scr.geometry.dispose(); R.scr = null; }
+  if (R.scrBack) { R.scrBack.material.dispose(); R.scrBack.geometry.dispose(); R.scrBack = null; }
   if (R.boardTex) R.boardTex.dispose();
   if (R.clockTex) R.clockTex.dispose();
+  if (R.mtex) { R.mtex.dispose(); R.mtex = null; R.mcv = null; }
+  R.mkey = ''; R.mSrc = null; R.scrDims = '';
   const g = new T.Group(); R.roomG = g; R.pick = []; R.markers = []; R.ceilObjs = [];
   const { W, D, rows, pairs } = L;
   const plane = (w, h, color, o) => new T.Mesh(new T.PlaneGeometry(w, h), mat(color, o));
@@ -709,19 +804,25 @@ function buildRoom() {
   // podium (ustoz balandligi)
   add(g, W - 0.06, PF, 2.4, 0x9a7048, 0, PF / 2, 1.2 + 0.03); add(g, W - 0.06, 0.02, 0.06, 0xe0c08a, 0, PF + 0.002, 2.4 + 0.03).castShadow = false;
   // doska + tokcha
-  const bw = Math.min(W - 2.6, 7.6), by = 2.05;
-  add(g, bw + 0.2, 1.9, 0.06, 0x6b4a2b, 0, by, 0.03);
-  R.boardTex = canvasTex(2048, Math.round(2048 * 1.7 / bw), () => {});
+  const { bw, bh, by } = boardDims();
+  add(g, bw + 0.2, bh + 0.2, 0.06, 0x6b4a2b, 0, by, 0.03);
+  // Doska yozuvi teksturasi: 4K gacha (zaif qurilmada 2K), mipmap + maksimal anisotropiya — qiya burchakdan ham tiniq
+  const tw = Math.min(R.renderer.capabilities.maxTextureSize || 4096, QUALITY.low || QUALITY.mode === 'low' ? 2048 : 4096);
+  R.boardTex = canvasTex(tw, Math.round(tw * bh / bw), () => {});
+  R.boardTex.anisotropy = ANISO; R.boardTex.minFilter = T.LinearMipmapLinearFilter;
   R.boardCv = R.boardTex.image;
-  const bm = new T.Mesh(new T.PlaneGeometry(bw, 1.7), new T.MeshBasicMaterial({ map: R.boardTex }));
+  const bm = new T.Mesh(new T.PlaneGeometry(bw, bh), new T.MeshBasicMaterial({ map: R.boardTex }));
   bm.position.set(0, by, 0.065); bm.userData.board = true; R.boardMesh = bm; g.add(bm);
-  add(g, bw, 0.05, 0.14, 0x6b4a2b, 0, by - 0.9, 0.1);
-  [0xffffff, 0xffe28a, 0x9ad1ff].forEach((c, i) => add(g, 0.1, 0.02, 0.02, c, -0.3 + i * 0.22, by - 0.865, 0.12).castShadow = false);
+  // Ulashilgan kontent qatlami (video/rasm/ekran/hujjat kartasi): qora fon + tasvir aspektiga mos plane
+  const sb = new T.Mesh(new T.PlaneGeometry(bw - 0.1, bh - 0.1), new T.MeshBasicMaterial({ color: 0x05080d })); sb.position.set(0, by, 0.068); sb.userData.board = true; sb.visible = false; g.add(sb); R.scrBack = sb;
+  const scrM = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ color: 0xffffff, toneMapped: false })); scrM.position.set(0, by, 0.071); scrM.userData.board = true; scrM.visible = false; g.add(scrM); R.scr = scrM;
+  add(g, bw, 0.05, 0.14, 0x6b4a2b, 0, by - bh / 2 - 0.05, 0.1);
+  [0xffffff, 0xffe28a, 0x9ad1ff].forEach((c, i) => add(g, 0.1, 0.02, 0.02, c, -0.3 + i * 0.22, by - bh / 2 - 0.015, 0.12).castShadow = false);
   R.boardSig = ''; R.boardProjectionKey = '';
   // devor soati
   R.clockTex = canvasTex(256, 256, () => {}); R.clockCv = R.clockTex.image;
   const ck = new T.Mesh(new T.CircleGeometry(0.32, 36), new T.MeshBasicMaterial({ map: R.clockTex, transparent: true }));
-  ck.position.set(Math.min(bw / 2 + 0.75, W / 2 - 0.5), 2.85, 0.05); g.add(ck);
+  ck.position.set(Math.min(bw / 2 + 0.75, W / 2 - 0.5), 2.95, 0.05); g.add(ck);
   // kitob javoni (joy bo'lsa)
   if (W / 2 - bw / 2 > 1.9) shelf(g, -W / 2 + 0.9, 0.3);
   // o'qituvchi stoli (podiumda)
@@ -795,7 +896,10 @@ function buildRoom() {
     mesh.count = count;
     mesh.instanceMatrix.needsUpdate = true;
   }
+  // statik xona: matritsalar har kadrda qayta hisoblanmaydi
+  g.traverse(o => { if (o.isMesh && !o.isInstancedMesh && R.markers.indexOf(o) < 0) { o.matrixAutoUpdate = false; o.updateMatrix(); } });
   R.scene.add(g);
+  R.shadowDirty = true; R.dirty = true;
   R.sun.target.position.set(0, 0, D / 2);
   const sc = R.sun.shadow && R.sun.shadow.camera; if (sc) { const e = Math.max(W, D) / 2 + 2; sc.left = -e; sc.right = e; sc.top = e; sc.bottom = -e; sc.updateProjectionMatrix(); R.sun.position.set(-W / 2 - 2, 10, D / 2 + 3); }
   for (const f of R.figs.values()) f.g.position.set(f.tx, 0, f.tz);
@@ -830,22 +934,31 @@ function handSprite() {
 }
 
 // Odam: yumaloq tana, bo'yin, yuz (ko'z+qosh+burun+og'iz), soch turlari, ko'zoynak, tirsakli qo'llar
-function makeFigure(standing) {
-  const g = new T.Group(), P = [];
+function makeFigure(standing, teacher) {
+  const g = new T.Group(), P = [], top = teacher ? 'shirt' : 'jacket';   // o'quvchi — maktab formasi (pidjak, oq ko'ylak, galstuk)
   const part = (geo, k, x, y, z, parent) => { const m = new T.Mesh(geo, mat(0xffffff)); m.position.set(x, y, z); m.castShadow = !LOW; m.userData.k = k; (parent || g).add(m); P.push(m); return m; };
   let torso;
   if (standing) {
     part(box(0.17, 0.85, 0.17), 'pants', -0.12, 0.43, 0); part(box(0.17, 0.85, 0.17), 'pants', 0.12, 0.43, 0);
     part(box(0.18, 0.08, 0.28), 'shoe', -0.12, 0.04, -0.05); part(box(0.18, 0.08, 0.28), 'shoe', 0.12, 0.04, -0.05);
-    torso = part(CYL(0.21, 0.25, 0.7, 14), 'shirt', 0, 1.2, 0); torso.scale.z = 0.62;
+    torso = part(CYL(0.21, 0.25, 0.7, 14), top, 0, 1.2, 0); torso.scale.z = 0.62;
   } else {
     part(box(0.15, 0.15, 0.44), 'pants', -0.11, 0.56, -0.2); part(box(0.15, 0.15, 0.44), 'pants', 0.11, 0.56, -0.2);
     part(box(0.14, 0.46, 0.14), 'pants', -0.11, 0.28, -0.43); part(box(0.14, 0.46, 0.14), 'pants', 0.11, 0.28, -0.43);
     part(box(0.15, 0.07, 0.24), 'shoe', -0.11, 0.04, -0.48); part(box(0.15, 0.07, 0.24), 'shoe', 0.11, 0.04, -0.48);
-    torso = part(CYL(0.19, 0.23, 0.58, 14), 'shirt', 0, 0.82, 0.04); torso.scale.z = 0.66;
+    torso = part(CYL(0.19, 0.23, 0.58, 14), top, 0, 0.82, 0.04); torso.scale.z = 0.66;
   }
   const hy = standing ? 1.8 : 1.32;
   part(CYL(0.05, 0.056, 0.1, 8), 'skin', 0, hy - 0.16, 0);
+  if (!teacher) {                                   // forma: oq ko'ylak yoqasi + ko'kragi, galstuk, pidjak yoqasi
+    const cy = standing ? 1.3 : 0.92, fz = standing ? -0.125 : -0.115;
+    part(box(0.16, 0.05, 0.13), 'shirtw', 0, hy - 0.205, -0.01);                       // yoqa
+    part(box(0.12, 0.4, 0.02), 'shirtw', 0, cy, fz);                                   // ko'ylak ko'kragi
+    part(box(0.045, 0.045, 0.03), 'tie', 0, cy + 0.17, fz - 0.012);                    // galstuk tuguni
+    part(box(0.05, 0.3, 0.018), 'tie', 0, cy + 0.01, fz - 0.014);                      // galstuk
+    part(box(0.035, 0.4, 0.016), 'jacket', -0.085, cy, fz - 0.002).rotation.z = 0.12;  // pidjak lapkalari
+    part(box(0.035, 0.4, 0.016), 'jacket', 0.085, cy, fz - 0.002).rotation.z = -0.12;
+  }
   const head = new T.Group(); head.position.set(0, hy, 0); g.add(head);
   part(SPH(0.15, 16, 12), 'skin', 0, 0, 0, head).scale.y = 1.08;
   part(sg('hair', () => new T.SphereGeometry(0.162, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55)), 'hair', 0, 0.014, 0.014, head);
@@ -863,8 +976,8 @@ function makeFigure(standing) {
   part(box(0.03, 0.006, 0.006), 'glass', 0, 0.02, -0.152, glasses);
   const arm = (dx) => {
     const pv = new T.Group(); pv.position.set(dx, standing ? 1.46 : 1.06, 0.03); g.add(pv);
-    part(SPH(0.07, 8, 6), 'shirt', 0, 0, 0, pv);
-    part(sg('upper', () => { const b = new T.BoxGeometry(0.095, 0.3, 0.095); b.translate(0, -0.15, 0); return b; }), 'shirt', 0, 0, 0, pv);
+    part(SPH(0.07, 8, 6), top, 0, 0, 0, pv);
+    part(sg('upper', () => { const b = new T.BoxGeometry(0.095, 0.3, 0.095); b.translate(0, -0.15, 0); return b; }), top, 0, 0, 0, pv);
     const el = new T.Group(); el.position.set(0, -0.3, 0); pv.add(el);
     part(sg('fore', () => { const b = new T.BoxGeometry(0.08, 0.28, 0.08); b.translate(0, -0.14, 0); return b; }), 'skin', 0, 0, 0, el);
     part(SPH(0.05, 8, 6), 'skin', 0, -0.29, 0, el);
@@ -872,11 +985,15 @@ function makeFigure(standing) {
     return { pv, el };
   };
   const aL = arm(-0.28), aR = arm(0.28);
-  return { g, P, head, torso, eyes, glasses, hairLong, bun, armL: aL.pv, armR: aR.pv, elL: aL.el, elR: aR.el, standing, label: null, hand: null, bub: null, key: '', tx: 0, tz: 0, ph: Math.random() * 6.28, raised: false };
+  // Tafsilotlar (ko'z, og'iz, ko'zoynak) uzoqdan yashiriladi; qotib qolgan qismlarning matritsasi qayta hisoblanmaydi (CPU tejaladi)
+  const detail = P.filter(m => m.userData.k === 'eye' || m.userData.k === 'pupil' || m.userData.k === 'mouth' || m.userData.k === 'glass');
+  for (const m of detail) m.castShadow = false;
+  for (const m of P) if (m !== torso) { m.matrixAutoUpdate = false; m.updateMatrix(); }
+  return { g, P, detail, far: false, head, torso, eyes, glasses, hairLong, bun, armL: aL.pv, armR: aR.pv, elL: aL.el, elR: aR.el, standing, label: null, hand: null, bub: null, key: '', tx: 0, tz: 0, ph: Math.random() * 6.28, raised: false };
 }
 function look(f, id, off) {
   const h = hash(id);
-  const c = { shirt: pick(SHIRT, h), pants: pick(PANTS, h, 5), skin: pick(SKIN, h, 9), hair: pick(HAIR, h, 13), shoe: 0x222222, eye: 0xffffff, pupil: 0x151515, mouth: 0x9a4a4a, glass: 0x20242c };
+  const c = { shirt: pick(SHIRT, h), jacket: 0x1d2b57, shirtw: 0xf7f9ff, tie: pick(TIE, h, 3), pants: pick(UNI_PANTS, h, 5), skin: pick(SKIN, h, 9), hair: pick(HAIR, h, 13), shoe: 0x222222, eye: 0xffffff, pupil: 0x151515, mouth: 0x9a4a4a, glass: 0x20242c };
   for (const m of f.P) { const k = m.userData.k; m.material = off ? mat(0x8a93a3, { transparent: true, opacity: 0.5 }) : mat(c[k]); }
   const hv = (h >>> 17) % 4;
   f.hairLong.visible = hv === 1; f.bun.visible = hv === 2; f.glasses.visible = ((h >>> 21) % 4) === 0;
@@ -914,7 +1031,7 @@ function applyScene() {
   const h = C.st.host;
   if (h && h.on) {
     if (!R.teacher) {
-      const t = makeFigure(true); t.g.rotation.y = Math.PI; look(t, 'teacher', false);
+      const t = makeFigure(true, true); t.g.rotation.y = Math.PI; look(t, 'teacher', false);
       for (const m of t.P) if (m.userData.k === 'shirt') m.material = mat(0x315b84);
       t.glasses.visible = true;
       add(t.g, 0.12, 0.3, 0.035, 0xc43e45, 0, 1.25, -0.17);
@@ -931,6 +1048,7 @@ function applyScene() {
   } else if (R.teacher) R.teacher.g.visible = false;
   markSel(); drawBoard();
   renderAwards();
+  R.shadowDirty = true; R.dirty = true;
 }
 
 // ---- doska yozuvi + soat
@@ -948,7 +1066,6 @@ function drawClock(d) {
 }
 function drawBoard() {
   if (!R || !R.boardCv || !C.st) return;
-  if (R.boardProjectionKey) return;
   const S = SS(), items = S.items || [], cur = items.find(i => i.id === (S.st && S.st.currentId));
   const title = cur ? (cur.name || cur.title || '') : '', playing = !!(S.st && S.st.playing);
   const on = C.st.seats.filter(e => !e.o).length, d = new Date(), hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
@@ -976,6 +1093,65 @@ function drawBoard() {
   R.boardTex.needsUpdate = true;
 }
 
+// ---- ulashilgan kontent: video / rasm / ekran — jonli; PDF, matn, hujjat, YouTube, arxiv — karta (3D ko'rinishlarda).
+// Doskaga yaqinlashilganda hammasi haqiqiy sifatda "proyektor" rejimida ko'rsatiladi (yuqoriga qarang).
+const extOf = n => (String(n || '').match(/\.([a-z0-9]+)$/i) || [, ''])[1].toLowerCase();
+const fmtSize = b => !b ? '' : b >= 1073741824 ? (b / 1073741824).toFixed(1) + ' GB' : b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+const CARD_KINDS = new Set(['pdf', 'text', 'doc', 'archive', 'youtube']);
+const OFFICE = { doc: ['📘', 'Word hujjati', '#2b579a'], docx: ['📘', 'Word hujjati', '#2b579a'], xls: ['📗', 'Excel jadvali', '#1d6f42'], xlsx: ['📗', 'Excel jadvali', '#1d6f42'], csv: ['📗', 'Jadval (CSV)', '#1d6f42'], ppt: ['📙', 'PowerPoint', '#c43e1c'], pptx: ['📙', 'PowerPoint', '#c43e1c'], odt: ['📘', 'Hujjat', '#2b579a'], ods: ['📗', 'Jadval', '#1d6f42'], odp: ['📙', 'Taqdimot', '#c43e1c'] };
+function cardStyle(p) {
+  const k = p.cardKind;
+  if (k === 'pdf') return ['📄', 'PDF hujjat', '#b3261e'];
+  if (k === 'text') return ['📝', 'Matn fayli', '#3b6fb5'];
+  if (k === 'youtube') return ['▶', 'YouTube video', '#d12a2a'];
+  if (k === 'archive') return ['📦', 'Arxiv', '#8a6a2b'];
+  if (k === 'doc') return OFFICE[extOf(p.title)] || ['📎', 'Fayl', '#5b6b88'];
+  return ['🖥', 'Kontent', '#4a5d85'];
+}
+const ytThumbs = new Map();
+function ytThumb(id) {
+  let e = ytThumbs.get(id); if (e) return e.ok ? e.img : null;
+  const img = new Image(); e = { img, ok: false }; ytThumbs.set(id, e);
+  img.crossOrigin = 'anonymous';
+  img.onload = () => { e.ok = true; if (R) { R.mkey = ''; poke(); } };
+  img.src = 'https://i.ytimg.com/vi/' + encodeURIComponent(id) + '/hqdefault.jpg';
+  return null;
+}
+function wrapLines(x, text, maxW, maxLines) {
+  const words = String(text || '').split(/\s+/).filter(Boolean), lines = []; let cur = '';
+  for (const w of words) {
+    const t = cur ? cur + ' ' + w : w;
+    if (x.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t;
+    if (lines.length >= maxLines) break;
+  }
+  if (cur && lines.length < maxLines) lines.push(cur);
+  if (lines.length === maxLines && words.join(' ').length > lines.join(' ').length) lines[maxLines - 1] = lines[maxLines - 1].replace(/.{0,2}$/, '…');
+  return lines;
+}
+function drawCard(x, ox, oy, w, h, p) {
+  const [ico, label, col] = cardStyle(p), u = h / 720;
+  x.save(); x.translate(ox, oy);
+  const g = x.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#0f1a33'); g.addColorStop(1, '#1f2f55'); x.fillStyle = g; x.fillRect(0, 0, w, h);
+  const th = p.ytId ? ytThumb(p.ytId) : null;
+  if (th) {
+    const s = Math.max(w / th.naturalWidth, h / th.naturalHeight); x.drawImage(th, (w - th.naturalWidth * s) / 2, (h - th.naturalHeight * s) / 2, th.naturalWidth * s, th.naturalHeight * s);
+    x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(0, 0, w, h);
+    x.fillStyle = 'rgba(209,42,42,.95)'; x.beginPath(); x.roundRect ? x.roundRect(w / 2 - 90 * u, h * 0.4 - 62 * u, 180 * u, 124 * u, 30 * u) : x.rect(w / 2 - 90 * u, h * 0.4 - 62 * u, 180 * u, 124 * u); x.fill();
+    x.fillStyle = '#fff'; x.beginPath(); x.moveTo(w / 2 - 22 * u, h * 0.4 - 36 * u); x.lineTo(w / 2 - 22 * u, h * 0.4 + 36 * u); x.lineTo(w / 2 + 38 * u, h * 0.4); x.fill();
+  } else {
+    x.fillStyle = col; x.beginPath(); x.arc(w / 2, h * 0.34, 118 * u, 0, 7); x.fill();
+    x.font = `${150 * u}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",system-ui,sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#fff'; x.fillText(ico, w / 2, h * 0.34 + 8 * u);
+  }
+  x.textAlign = 'center'; x.textBaseline = 'alphabetic';
+  x.fillStyle = '#9ad1ff'; x.font = `700 ${34 * u}px system-ui,sans-serif`; x.fillText(label.toUpperCase(), w / 2, h * 0.64);
+  x.fillStyle = '#fff'; x.font = `700 ${50 * u}px system-ui,sans-serif`;
+  const lines = wrapLines(x, p.title || label, w * 0.82, 2);
+  lines.forEach((l, i) => x.fillText(l, w / 2, h * 0.74 + i * 58 * u));
+  const meta = [fmtSize(p.size), extOf(p.title).toUpperCase()].filter(Boolean).join(' · ');
+  if (meta) { x.fillStyle = '#a9bcd6'; x.font = `600 ${28 * u}px system-ui,sans-serif`; x.fillText(meta, w / 2, h * 0.74 + lines.length * 58 * u + 6 * u); }
+  x.fillStyle = 'rgba(255,255,255,.55)'; x.font = `600 ${26 * u}px system-ui,sans-serif`; x.fillText('Doskani bosing — to‘liq ko‘rinish', w / 2, h - 28 * u);
+  x.restore();
+}
 function boardProjection() {
   const media = BR() && BR().classroomMedia ? BR().classroomMedia() : null;
   if (media && media.stream) {
@@ -990,48 +1166,66 @@ function boardProjection() {
     return { source: media.video, kind: 'video', title: media.title, playing: media.playing };
   }
   if (media && media.image && media.image.complete && media.image.naturalWidth) {
-    return { source: media.image, kind: 'image', title: media.title, playing: media.playing };
+    return { source: media.image, kind: 'image', title: media.title, playing: false };
   }
+  if (media && CARD_KINDS.has(media.kind)) return { kind: 'card', cardKind: media.kind, title: media.title, size: media.size, ytId: media.ytId, playing: false };
   return null;
 }
-function drawBoardProjection(ctx, projection, x, y, w, h) {
+function drawBoardProjection(ctx, projection, x, y, w, h) {       // oflayn (Canvas) zaxira uchun
+  if (projection.kind === 'card') { drawCard(ctx, x, y, w, h, projection); return; }
   ctx.fillStyle = '#10151d'; ctx.fillRect(x, y, w, h);
   const source = projection.source, sw = source.videoWidth || source.naturalWidth, sh = source.videoHeight || source.naturalHeight;
   const scale = Math.min(w / sw, h / sh), dw = sw * scale, dh = sh * scale;
   ctx.drawImage(source, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-  const barH = Math.max(34, h * 0.14);
-  const grad = ctx.createLinearGradient(0, y + h - barH, 0, y + h);
-  grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(0,0,0,.82)');
-  ctx.fillStyle = grad; ctx.fillRect(x, y + h - barH, w, barH);
-  ctx.fillStyle = '#fff'; ctx.font = `600 ${Math.max(16, barH * 0.42)}px system-ui,sans-serif`;
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText(`${projection.playing ? '▶' : '⏸'} ${projection.title || (projection.kind === 'image' ? 'Rasm' : 'Efir')}`, x + 14, y + h - barH / 2, w - 28);
-  ctx.textBaseline = 'alphabetic';
 }
-function syncBoardMedia() {
-  if (!R || !R.boardCv || !R.boardTex || !C.st) return;
-  const projection = boardProjection();
-  const key = projection ? `${projection.kind}|${projection.title}|${projection.playing}` : '';
-  if (!projection) {
-    if (R.boardProjectionKey) { R.boardProjectionKey = ''; R.boardProjectionSource = null; R.boardSig = ''; }
-    return;
+function watchVideo(v) {
+  if (R.vWatch === v) return;
+  R.vWatch = v; R.vRvfc = !!(v && v.requestVideoFrameCallback);
+  if (!R.vRvfc) return;
+  const cb = () => { if (R.vWatch !== v) return; R.vfDirty = true; R.dirty = true; v.requestVideoFrameCallback(cb); };
+  v.requestVideoFrameCallback(cb);
+}
+function ensureMediaTex(live, tw, th) {
+  if (!R.mtex || R.mLive !== live) {
+    if (R.mtex) R.mtex.dispose();
+    R.mcv = document.createElement('canvas');
+    R.mtex = new T.CanvasTexture(R.mcv); R.mLive = live;
+    R.mtex.generateMipmaps = !live; R.mtex.minFilter = live ? T.LinearFilter : T.LinearMipmapLinearFilter; R.mtex.anisotropy = ANISO;
+    R.scr.material.map = R.mtex; R.scr.material.color.set(0xffffff); R.scr.material.needsUpdate = true;
   }
-  const source = projection.source, url = source.currentSrc || source.src || '';
-  if (source !== boardScreen && url) {
-    try {
-      const parsed = new URL(url, location.href);
-      if (parsed.protocol !== 'blob:' && parsed.origin !== location.origin) {
-        if (R.boardProjectionKey) { R.boardProjectionKey = ''; R.boardProjectionSource = null; R.boardSig = ''; }
-        return;
-      }
-    } catch { return; }
+  if (R.mcv.width !== tw || R.mcv.height !== th) { R.mcv.width = tw; R.mcv.height = th; R.mtex.dispose(); }
+}
+function syncBoardMedia(now) {
+  if (!R || !R.scr || !C.st) return;
+  let p = boardProjection();
+  if (p && p.source) {                                  // boshqa domendan (CORS yo'q) kelgan manba WebGL tekstura bo'lolmaydi — karta ko'rsatiladi
+    const url = p.source.currentSrc || p.source.src || '';
+    if (p.source !== boardScreen && url) {
+      try { const u = new URL(url, location.href); if (u.protocol !== 'blob:' && u.protocol !== 'data:' && u.origin !== location.origin) p = { kind: 'card', cardKind: 'doc', title: p.title, playing: false }; }
+      catch { p = null; }
+    }
   }
-  const now = performance.now();
-  const changedSource = R.boardProjectionSource !== source;
-  if (R.boardProjectionKey === key && !changedSource && (projection.kind === 'image' || !projection.playing || now - (R.boardFrameAt || 0) < 66)) return;
-  R.boardProjectionKey = key; R.boardProjectionSource = source; R.boardFrameAt = now;
-  drawBoardProjection(R.boardCv.getContext('2d'), projection, 0, 0, R.boardCv.width, R.boardCv.height);
-  R.boardTex.needsUpdate = true;
+  if (!p) { if (R.scr.visible) { R.scr.visible = R.scrBack.visible = false; R.dirty = true; } R.mkey = ''; R.mSrc = null; watchVideo(null); return; }
+  const live = p.kind === 'video', card = p.kind === 'card';
+  if (live) { watchVideo(p.source); if (p.playing && !R.vRvfc) R.dirty = true; } else watchVideo(null);
+  const maxW = C.view === 'board' ? (QUALITY.low ? 1920 : 2560) : (QUALITY.low ? 960 : 1280);
+  let sw = 1280, sh = 720;
+  if (!card) { sw = p.source.videoWidth || p.source.naturalWidth; sh = p.source.videoHeight || p.source.naturalHeight; }
+  if (!sw || !sh) return;
+  const k = Math.min(1, maxW / sw), tw = Math.max(2, Math.round(sw * k)), th = Math.max(2, Math.round(sh * k));
+  const key = [p.kind, p.cardKind || '', p.title || '', p.playing, tw, th].join('|');
+  const src = card ? p.title : p.source;
+  const due = live && p.playing && (R.vfDirty || !R.vRvfc) && now - R.mAt >= (QUALITY.low ? 66 : 33);
+  if (key === R.mkey && R.mSrc === src && !due) return;
+  ensureMediaTex(live, tw, th);
+  const x = R.mcv.getContext('2d');
+  if (card) drawCard(x, 0, 0, tw, th, p); else x.drawImage(p.source, 0, 0, tw, th);
+  R.mtex.needsUpdate = true;
+  R.mkey = key; R.mSrc = src; R.mAt = now; R.vfDirty = false; R.dirty = true;
+  const { bw, bh } = boardDims(), avW = bw - 0.14, avH = bh - 0.14, asp = tw / th;
+  const pw = avW / avH > asp ? avH * asp : avW, ph = avW / avH > asp ? avH : avW / asp;
+  R.scr.scale.set(pw, ph, 1); R.scr.updateMatrix();
+  R.scr.visible = R.scrBack.visible = true;
 }
 
 function markSel() {
@@ -1039,6 +1233,7 @@ function markSel() {
   if (!R.ring) { R.ring = new T.Mesh(new T.RingGeometry(0.42, 0.55, 36), new T.MeshBasicMaterial({ color: 0xffd23f, side: T.DoubleSide, depthTest: false, transparent: true, opacity: 0.95 })); R.ring.rotation.x = -Math.PI / 2; R.ring.renderOrder = 9; R.scene.add(R.ring); }
   const f = C.sel && R.figs.get(C.sel);
   R.ring.visible = !!f; if (f) R.ring.position.set(f.tx, 0.03, f.tz);
+  R.dirty = true;
 }
 function bubble(key, text) {
   if (!R) return;
@@ -1049,47 +1244,58 @@ function bubble(key, text) {
 
 // ---- kamera va kadr
 const dirv = (yaw, p, v) => v.set(Math.sin(yaw) * Math.cos(p), Math.sin(p), -Math.cos(yaw) * Math.cos(p));
+const _v = () => new T.Vector3();
 function frame(t, dt) {
   if (!L) return;
   const cam = R.camera, me = myId(), s = mySeat(), host = isHost(), sec = t / 1000, now = performance.now();
+  const board = C.view === 'board';
   let pos, tgt, fov;
-  const v = new T.Vector3();
+  const v = R.v1 || (R.v1 = _v());
   if (C.view === 'pov') {
     let base = 0;
     if (host) { pos = new T.Vector3(tpx(), PF + 1.68, TP.z + 0.15); base = Math.PI; }
     else if (s != null) { const p = seatPos(s); pos = new T.Vector3(p.x, 1.3 + Math.sin(sec * 1.3) * 0.006, p.z + 0.02); }
     else pos = new T.Vector3(0, 1.6, L.D - 1.2);
     tgt = pos.clone().add(dirv(base + C.yaw, C.pitch, v).multiplyScalar(3)); fov = 72;
-  } else if (C.view === 'board') {
-    pos = new T.Vector3(0, 2.2, C.boardRad);
-    tgt = new T.Vector3(0, 2.05, 0);
+  } else if (board) {
+    const { by } = boardDims();
+    pos = new T.Vector3(0, by, C.boardRad);
+    tgt = new T.Vector3(0, by, 0);
     fov = 36;
   } else {
-    if (now - C.idle > 8000) C.oy += dt * 0.07;            // harakatsiz bo'lsa — sekin aylanadi
+    if (now - C.idle > 8000 && now - C.idle < 33000) { C.oy += dt * 0.07; R.active = Math.max(R.active, t + 100); }   // harakatsiz bo'lsa sekin aylanadi (25 s dan keyin to'xtaydi — CPU tinchlanadi)
     const tg = new T.Vector3(0, C.award ? 1.55 : 0.9, C.award ? 1.55 : L.D * 0.45), cp = Math.cos(C.op);
     pos = tg.clone().add(new T.Vector3(Math.sin(C.oy) * cp, Math.sin(C.op), Math.cos(C.oy) * cp).multiplyScalar(C.rad)); tgt = tg; fov = 52;
   }
+  if (cam.aspect < 1 && !board) fov = Math.min(105, fov / Math.pow(cam.aspect, 0.55));   // tik (portret) ekranda ko'rish maydoni kengaytiriladi
   const k = 1 - Math.exp(-dt * 7);
+  const movedCam = R.cp.distanceToSquared(pos) > 1e-5 || R.ct.distanceToSquared(tgt) > 1e-5 || Math.abs(cam.fov - fov) > 0.05;
+  if (movedCam) R.active = Math.max(R.active, t + 120);
   R.cp.lerp(pos, k); R.ct.lerp(tgt, k);
   cam.position.copy(R.cp); cam.lookAt(R.ct);
   if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * k; cam.updateProjectionMatrix(); }
   const hide = C.view === 'orbit'; for (const o of R.ceilObjs) o.visible = !hide;
-  const kk = 1 - Math.exp(-dt * 8);
+  const kk = 1 - Math.exp(-dt * 8), farD = (C.view === 'orbit' ? Math.max(14, C.rad * 0.9) : 10) * (C.st && C.st.seats.length > 60 ? 0.7 : 1);   // odam ko'p bo'lsa tafsilotlar yaqinroqdan o'chadi
+  let anyMove = false;
   for (const f of R.figs.values()) {
+    const own = f.id === me && C.view === 'pov', vis = !board && !own;
+    f.g.visible = vis;
     const dx = f.tx - f.g.position.x, dz = f.tz - f.g.position.z, mv = Math.abs(dx) + Math.abs(dz) > 0.03;
+    if (mv) { anyMove = true; R.active = Math.max(R.active, t + 120); }
+    if (!vis) continue;
     f.g.position.x += dx * kk; f.g.position.z += dz * kk; f.g.position.y = mv ? Math.abs(Math.sin(sec * 9)) * 0.12 : 0;
-    const own = f.id === me && C.view === 'pov';
-    f.g.visible = C.view !== 'board' && !own;
+    const d = f.g.position.distanceTo(cam.position), far = d > farD;
+    if (f.far !== far) { f.far = far; for (const m of f.detail) m.visible = !far; }      // uzoqdagi odamlarda mayda tafsilotlar chizilmaydi
     f.head.rotation.y = Math.sin(sec * 0.5 + f.ph) * 0.22; f.head.rotation.x = Math.sin(sec * 0.7 + f.ph * 2) * 0.05;
     f.torso.scale.y = 1 + Math.sin(sec * 1.6 + f.ph) * 0.012;                                    // nafas
-    const bl = ((sec + f.ph) % 4.3) < 0.13 ? 0.1 : 1; f.eyes[0].scale.y = bl; f.eyes[1].scale.y = bl;   // pirpirash
+    if (!far) { const bl = ((sec + f.ph) % 4.3) < 0.13 ? 0.1 : 1; f.eyes[0].scale.y = bl; f.eyes[1].scale.y = bl; }   // pirpirash
     if (f.raised) { f.armR.rotation.x = Math.PI * 0.92; f.armR.rotation.z = -0.15 + Math.sin(sec * 6 + f.ph) * 0.18; f.elR.rotation.x = 0.1; }
     else {
       f.armR.rotation.x += (0.7 - f.armR.rotation.x) * kk; f.armR.rotation.z += (0 - f.armR.rotation.z) * kk;
       f.elR.rotation.x += ((0.8 + Math.sin(sec * 4 + f.ph) * 0.035) - f.elR.rotation.x) * kk;     // yozayotgandek
     }
     f.elL.rotation.x = 0.8 + Math.sin(sec * 3.4 + f.ph * 2) * 0.03;
-    if (f.label) { const d = f.g.position.distanceTo(cam.position); f.label.visible = d < (C.view === 'pov' ? 11 : 60) && !own; }
+    if (f.label) f.label.visible = d > 1.6 && d < (C.view === 'pov' ? 11 : 60);   // juda yaqindagi nomlar ekranni to'smasin
   }
   for (const entry of R.awardFigures || []) {
     const progress = clamp((t - (entry.started || (entry.started = t))) / 900, 0, 1);
@@ -1103,18 +1309,19 @@ function frame(t, dt) {
     piece.rotation.y += dt * (1.2 + (piece.userData.phase % 2));
     piece.rotation.z += dt * 0.7;
   }
-  if (R.teacher) { const tt = R.teacher; tt.armR.rotation.z = 0.25 + Math.sin(sec * 1.6) * 0.12; tt.head.rotation.y = Math.sin(sec * 0.4) * 0.3; tt.torso.scale.y = 1 + Math.sin(sec * 1.5) * 0.01; tt.g.visible = !C.award && C.view !== 'board' && !(C.view === 'pov' && host); }
+  if (R.awardFigures && R.awardFigures.length) R.active = Math.max(R.active, t + 120);
+  if (R.teacher) { const tt = R.teacher; tt.armR.rotation.z = 0.25 + Math.sin(sec * 1.6) * 0.12; tt.head.rotation.y = Math.sin(sec * 0.4) * 0.3; tt.torso.scale.y = 1 + Math.sin(sec * 1.5) * 0.01; tt.g.visible = !C.award && !board && !(C.view === 'pov' && host); }
   R.bubbles = R.bubbles.filter(b => { if (now > b.until) { disposeSprite(b.f.bub); b.f.bub = null; return false; } return true; });
   if (R.ring && R.ring.visible) R.ring.scale.setScalar(1 + Math.sin(sec * 5) * 0.06);
-  R.mkMat.opacity = 0.32 + 0.2 * Math.sin(sec * 3);
-  for (let i = 0; i < R.markers.length; i++) { const m = R.markers[i], hot = C.hover === i; m.material = hot ? R.mkHot : R.mkMat; m.scale.setScalar(hot ? 1.3 : 1 + Math.sin(sec * 3 + i) * 0.04); }
-  const wallNow = new Date();
-  if (R.clockSecond !== wallNow.getSeconds()) {
-    drawClock(wallNow);
-    R.clockSecond = wallNow.getSeconds();
+  if (!board) {
+    R.mkMat.opacity = 0.32 + 0.2 * Math.sin(sec * 3);
+    for (let i = 0; i < R.markers.length; i++) { const m = R.markers[i], hot = C.hover === i; if (!m.visible) continue; m.material = hot ? R.mkHot : R.mkMat; m.scale.setScalar(hot ? 1.3 : 1 + Math.sin(sec * 3 + i) * 0.04); m.updateMatrix(); }
   }
-  syncBoardMedia();
-  if (((t / 1000) | 0) % 2 === 0 && !frame._d) { frame._d = 1; drawBoard(); } else if (((t / 1000) | 0) % 2) frame._d = 0;
+  const wallNow = new Date();
+  if (R.clockSecond !== wallNow.getSeconds()) { drawClock(wallNow); R.clockSecond = wallNow.getSeconds(); drawBoard(); }
+  syncBoardMedia(now);
+  // soya xaritasi faqat sahna o'zgarganda (yoki odamlar harakatlanganda / har 2 s) yangilanadi
+  if (R.renderer.shadowMap.enabled && (R.shadowDirty || (anyMove && now - R.shAt > 250) || now - R.shAt > 2000)) { R.renderer.shadowMap.needsUpdate = true; R.shadowDirty = false; R.shAt = now; }
   R.renderer.render(R.scene, cam);
 }
 
@@ -1126,6 +1333,7 @@ function pickAt(cx, cy) {
   R.ray.setFromCamera(R.ndc, R.camera);
   const list = R.pick.slice(); if (R.teacher && R.teacher.hb && R.teacher.g.visible) list.push(R.teacher.hb);
   if (R.boardMesh && R.boardMesh.visible) list.push(R.boardMesh);
+  if (R.scr && R.scr.visible) list.push(R.scr);
   const hits = R.ray.intersectObjects(list, false);
   return hits.length ? hits[0].object : null;
 }
@@ -1142,7 +1350,7 @@ function bindPointer(cv) {
   const ptrs = new Map(); let down = null, pinch = 0;
   cv.style.touchAction = 'none'; cv.style.cursor = 'grab';
   cv.addEventListener('pointerdown', e => {
-    C.idle = performance.now();
+    touch();
     cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (ptrs.size === 1) down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); if (down) down.moved = true; }
@@ -1150,13 +1358,13 @@ function bindPointer(cv) {
   cv.addEventListener('pointermove', e => {
     if (e.pointerType === 'mouse' && ptrs.size === 0) return hoverAt(e);
     const p = ptrs.get(e.pointerId); if (!p) return;
-    C.idle = performance.now();
+    touch();
     const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
     if (ptrs.size === 2) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
       if (pinch) {
         if (C.view === 'orbit') { C.rad = clamp(C.rad * pinch / d, 4, 45); C.zoomed = true; }
-        else if (C.view === 'board') { C.boardRad = clamp(C.boardRad * pinch / d, 5, 36); C.boardZoomed = true; }
+        else if (C.view === 'board') boardZoom(pinch / d);
       }
       pinch = d; return;
     }
@@ -1172,9 +1380,9 @@ function bindPointer(cv) {
   };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', e => { ptrs.delete(e.pointerId); down = null; });
   cv.addEventListener('wheel', e => {
-    e.preventDefault(); C.idle = performance.now();
+    e.preventDefault(); touch();
     if (C.view === 'orbit') { C.rad = clamp(C.rad * Math.exp(e.deltaY * 0.001), 4, 45); C.zoomed = true; }
-    else if (C.view === 'board') { C.boardRad = clamp(C.boardRad * Math.exp(e.deltaY * 0.001), 5, 36); C.boardZoomed = true; renderTabs(); }
+    else if (C.view === 'board') boardZoom(Math.exp(e.deltaY * 0.001));
   }, { passive: false });
 }
 function doPick(e) {
@@ -1213,7 +1421,7 @@ function initFallback() {
 function startFallback() {
   if (!fallback || fallback.raf || !C.open || C.view === 'plan') return;
   const tick = t => {
-    if (!fallback || !C.open || C.view === 'plan') { if (fallback) fallback.raf = 0; return; }
+    if (!fallback || !C.open || C.view === 'plan' || C.proj || document.hidden) { if (fallback) fallback.raf = 0; return; }
     fallback.raf = requestAnimationFrame(tick);
     if (t - fallback.last > 1000 / Math.min(QUALITY.fps, 30)) { drawFallback(t); fallback.last = t; }
   };
