@@ -1,0 +1,62 @@
+/* Birlash Google hisob: dock tugmasi, hisob oynasi, qo'lyozma bulut qatori */
+
+/* ---------- Dock tugmasi ---------- */
+#svcDock .sd-acc { overflow: visible; }
+#svcDock .sd-acc .sd-av { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; font-weight: 800; font-size: 15px; background: linear-gradient(135deg, var(--pri, #5b8cff), var(--pri2, #8a5bff)); color: #fff; }
+#svcDock .sd-acc .sd-rd { position: absolute; right: 5px; bottom: 5px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(11,14,26,.95); background: #94a3b8; }
+#svcDock .sd-rd.r-teacher { background: #f59e0b; }
+#svcDock .sd-rd.r-student { background: #22c55e; }
+#svcDock .sd-rd.r-user { background: #60a5fa; }
+
+/* ---------- Hisob oynasi ---------- */
+#bxaRoot { position: fixed; inset: 0; z-index: 10001; display: none; color: var(--txt, #eef1fb); }
+#bxaRoot.on { display: grid; place-items: center; padding: 14px; }
+#bxaRoot .bxa-bg { position: absolute; inset: 0; background: rgba(5,7,16,.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: bxaFade .25s both; }
+#bxaRoot .bxa-box {
+  position: relative; width: min(460px, 100%); max-height: calc(100dvh - 28px); overflow: auto; padding: 24px 22px 20px;
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)), var(--card, #151d30);
+  border: 1px solid var(--glass-line, rgba(255,255,255,.14)); border-radius: 22px; box-shadow: 0 30px 80px rgba(0,0,0,.55); animation: bxaUp .4s cubic-bezier(.22,1,.36,1) both;
+}
+@keyframes bxaFade { from { opacity: 0; } }
+@keyframes bxaUp { from { opacity: 0; transform: translateY(22px) scale(.98); } }
+#bxaRoot .bxa-x { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px; border-radius: 10px; border: 0; cursor: pointer; color: inherit; background: rgba(255,255,255,.08); font-size: 15px; }
+#bxaRoot .bxa-x:hover { background: rgba(255,255,255,.16); }
+#bxaRoot h2 { margin: 6px 0 4px; font-size: 21px; text-align: center; }
+#bxaRoot h3 { margin: 0 0 8px; font-size: 14.5px; }
+.bxa-hero { width: 62px; height: 62px; margin: 0 auto 6px; border-radius: 18px; display: grid; place-items: center; background: linear-gradient(135deg, var(--pri, #5b8cff), var(--pri2, #8a5bff)); }
+.bxa-hero svg { width: 32px; height: 32px; fill: none; stroke: #fff; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.bxa-sub { text-align: center; font-size: 14px; line-height: 1.55; color: var(--mut, #aab3d6); margin: 0 0 12px; }
+.bxa-list { list-style: none; margin: 0 0 16px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.06); font-size: 13.5px; line-height: 1.9; }
+.bxa-wide { width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 9px; padding: 13px 16px; }
+.bxa-g { width: 18px; height: 18px; flex: none; }
+.bxa-me { display: flex; align-items: center; gap: 12px; padding-right: 36px; }
+.bxa-me > div { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.bxa-me b { font-size: 15.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bxa-me span { font-size: 12.5px; color: var(--mut, #aab3d6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bxa-av { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; flex: none; }
+.bxa-av.ph { display: grid; place-items: center; font-weight: 800; font-size: 19px; color: #fff; background: linear-gradient(135deg, var(--pri, #5b8cff), var(--pri2, #8a5bff)); }
+.bxa-av.sm { width: 20px; height: 20px; font-size: 11px; vertical-align: middle; margin-right: 6px; display: inline-grid; }
+.bxa-role { font-style: normal; font-size: 12px; font-weight: 800; padding: 5px 10px; border-radius: 999px; flex: none; background: rgba(96,165,250,.18); color: #93c5fd; }
+.bxa-role.r-teacher { background: rgba(245,158,11,.18); color: #fbbf24; }
+.bxa-role.r-student { background: rgba(34,197,94,.18); color: #4ade80; }
+.bxa-sec { margin-top: 16px; padding: 14px; border-radius: 16px; background: rgba(255,255,255,.05); border: 1px solid var(--glass-line, rgba(255,255,255,.1)); }
+.bxa-st, .bxa-hst { font-size: 13px; line-height: 1.5; color: var(--mut, #aab3d6); }
+.bxa-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: #94a3b8; vertical-align: baseline; }
+.bxa-dot.ok { background: #22c55e; } .bxa-dot.bad { background: #ef4444; } .bxa-dot.busy { background: #f59e0b; animation: bxaPulse 1s infinite; } .bxa-dot.idle { background: #60a5fa; }
+@keyframes bxaPulse { 50% { opacity: .35; } }
+.bxa-form { display: flex; gap: 8px; }
+.bxa-form input { flex: 1; min-width: 0; font: inherit; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--glass-line, rgba(255,255,255,.18)); background: rgba(0,0,0,.25); color: inherit; }
+.bxa-err { min-height: 18px; margin-top: 8px; font-size: 13px; color: #fca5a5; }
+
+/* ---------- Qo'lyozma bo'limidagi bulut qatori ---------- */
+.sv-cloud { margin-top: 14px; }
+.bxa-hand { padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,.05); border: 1px dashed var(--glass-line, rgba(255,255,255,.18)); }
+.bxa-hrow { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.bxa-hrow .sv-btn { display: inline-flex; align-items: center; gap: 8px; }
+.bxa-in { display: inline-flex; align-items: center; margin-right: 6px; color: var(--txt, #eef1fb); font-weight: 600; }
+
+/* ---------- Toast ---------- */
+#bxaToast { position: fixed; left: 50%; bottom: calc(26px + env(safe-area-inset-bottom)); transform: translate(-50%, 14px); z-index: 10002; max-width: min(92vw, 460px); padding: 11px 16px; border-radius: 14px; font-size: 14px; line-height: 1.45; text-align: center; color: #fff; background: rgba(20,26,48,.97); border: 1px solid rgba(255,255,255,.16); box-shadow: 0 12px 34px rgba(0,0,0,.45); opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; }
+#bxaToast.on { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 600px) { #bxaRoot .bxa-box { padding: 22px 16px 16px; } .bxa-form { flex-direction: column; } }
