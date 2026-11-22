@@ -1,4 +1,14 @@
 'use strict';
+
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    service: "Birlash",
+    uptime: process.uptime()
+  });
+});
+
 const express = require('express');
 const http = require('http');
 const fs = require('fs');
